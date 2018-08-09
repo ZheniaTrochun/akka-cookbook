@@ -25,9 +25,7 @@ class DoubleActor(f: Int => Int) extends Actor {
 
 
 class MyParentActor()(implicit timeout: Timeout) extends Actor {
-  val random = new java.security.SecureRandom()
   var children = List.empty[ActorRef]
-
 
   override def receive: Receive = {
     case CreateChild =>
@@ -35,15 +33,34 @@ class MyParentActor()(implicit timeout: Timeout) extends Actor {
       children ::= context.actorOf(Props(new DoubleActor(_ * children.size)))
     case Send =>
       println("Sending message to my children")
-      val result: Future[List[Int]] = (children zipWithIndex) map (e => e._1 ? Request(e._2)) traverse (_.asInstanceOf[Response].value)
+//      val result: Future[List[Int]] = (children zipWithIndex) map (e => e._1 ? Request(e._2)) traverse (_.asInstanceOf[Response].value)
+      val result: Future[List[Any]] = (children zipWithIndex) map (e => e._1 ? Request(e._2)) traverse()
       result pipeTo sender
   }
 
   implicit class traversable[A](list: List[Future[A]]) {
-    def traverse[B](implicit f: A => B): Future[List[B]] =
-      (list foldRight Future.successful(List.empty[B])) { (x, list) =>
-        list flatMap (xs => x map (f(_) :: xs))
+    def defaultConverter[B](x: A): B = x.asInstanceOf[B]
+
+    def traverse[B](f: A => B): Future[List[B]] =
+      list.foldRight(Future.successful(List.empty[B])) { (elem, list) =>
+        for {
+          xs <- list
+          x <- elem
+        } yield f(x) :: xs
       }
+
+    def traverse(): Future[List[A]] =
+      list.foldRight(Future.successful(List.empty[A])) { (elem, list) =>
+        for {
+          xs <- list
+          x <- elem
+        } yield x :: xs
+      }
+
+    //    def traverse[B](f: A => B): Future[List[B]] =
+    //      (list foldRight Future.successful(List.empty[B])) { (elem, list) =>
+    //        list flatMap (xs => elem map (x => f(x) :: xs))
+    //      }
   }
 }
 
